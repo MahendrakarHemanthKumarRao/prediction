@@ -4,52 +4,66 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 import matplotlib.pyplot as plt
 
-# App settings
-st.set_page_config(page_title="NIFTY 50 Predictor", layout="wide")
+# Streamlit config
+st.set_page_config(page_title="NIFTY 50 - 6 Day Predictor", layout="wide")
 
-st.title("📈 NIFTY 50 Close Price Predictor (LLM Style)")
-st.markdown("Upload your NIFTY 50 historical dataset and get the next day's **predicted close** using an LLM-inspired model.")
+st.title("📈 NIFTY 50 - 6 Day Close Price Predictor (LLM Style)")
+st.markdown("Upload your NIFTY 50 historical CSV file. The app will predict the **next 6 closing prices** using a simple linear regression approach.")
 
-# Upload CSV file
-uploaded_file = st.file_uploader("📂 Upload your CSV file", type=["csv"])
+# Upload section
+uploaded_file = st.file_uploader("📂 Upload your NIFTY 50 CSV file", type=["csv"])
 
 if uploaded_file:
     try:
         df = pd.read_csv(uploaded_file)
 
-        # Check for required columns
+        # Ensure necessary columns exist
         if 'Date' not in df.columns or 'Close' not in df.columns:
-            st.error("❌ Your CSV must have 'Date' and 'Close' columns.")
+            st.error("❌ CSV must have 'Date' and 'Close' columns.")
         else:
             df['Date'] = pd.to_datetime(df['Date'])
             df = df.sort_values(by='Date')
 
             window_size = 30
             if len(df) < window_size:
-                st.warning("⚠️ Need at least 30 rows of data to make a prediction.")
+                st.warning("⚠️ At least 30 rows are required.")
             else:
-                close_prices = df['Close'].values
-                dates = df['Date'].values
+                original_dates = list(df['Date'].values)
+                original_close = list(df['Close'].values)
 
-                # Fit linear model
                 X = np.arange(window_size).reshape(-1, 1)
-                y = close_prices[-window_size:]
-                model = LinearRegression()
-                model.fit(X, y)
+                y = np.array(original_close[-window_size:])
+                predicted_dates = []
+                predicted_values = []
 
-                # Predict next close price
-                next_day_index = np.array([[window_size]])
-                predicted_close = model.predict(next_day_index)[0]
-                predicted_date = dates[-1] + np.timedelta64(1, 'D')
+                last_known_date = df['Date'].iloc[-1]
 
-                st.success(f"📅 **Predicted Close for {predicted_date}**: ₹{predicted_close:.2f}")
+                for i in range(6):
+                    model = LinearRegression()
+                    model.fit(X, y)
+                    next_value = model.predict([[window_size]])[0]
 
-                # Plotting
+                    predicted_values.append(next_value)
+                    last_known_date += pd.Timedelta(days=1)
+                    predicted_dates.append(last_known_date)
+
+                    # Update input window
+                    y = np.append(y[1:], next_value)
+
+                # Display predictions
+                pred_df = pd.DataFrame({
+                    "Date": predicted_dates,
+                    "Predicted Close": predicted_values
+                })
+
+                st.success("✅ Successfully predicted the next 6 days!")
+                st.dataframe(pred_df)
+
+                # Plot
                 fig, ax = plt.subplots(figsize=(12, 6))
-                ax.plot(dates[-window_size:], y, marker='o', label='Actual Closing Prices')
-                ax.plot(predicted_date, predicted_close, 'ro', label='Predicted Next Close')
-                ax.axhline(predicted_close, color='red', linestyle='--', alpha=0.5)
-                ax.set_title("NIFTY 50 Closing Price Prediction")
+                ax.plot(original_dates[-window_size:], original_close[-window_size:], label="Actual", marker='o')
+                ax.plot(predicted_dates, predicted_values, label="Predicted", marker='o', color='red')
+                ax.set_title("NIFTY 50 - Actual vs Next 6 Day Prediction")
                 ax.set_xlabel("Date")
                 ax.set_ylabel("Close Price")
                 ax.legend()
@@ -60,4 +74,4 @@ if uploaded_file:
     except Exception as e:
         st.error(f"⚠️ Error processing file: {e}")
 else:
-    st.info("👆 Upload your NIFTY 50 CSV file to begin.")
+    st.info("📂 Please upload a CSV file with at least 'Date' and 'Close' columns.")
