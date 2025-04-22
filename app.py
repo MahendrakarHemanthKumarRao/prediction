@@ -18,8 +18,9 @@ if uploaded_file:
         df = pd.read_csv(uploaded_file)
 
         # Ensure necessary columns exist
-        if 'Date' not in df.columns or 'Close' not in df.columns:
-            st.error("❌ CSV must have 'Date' and 'Close' columns.")
+        required_columns = ['Date', 'Close']
+        if any(col not in df.columns for col in required_columns):
+            st.error(f"❌ CSV must have the following columns: {', '.join(required_columns)}.")
         else:
             df['Date'] = pd.to_datetime(df['Date'])
             df = df.sort_values(by='Date')
@@ -28,27 +29,31 @@ if uploaded_file:
             if len(df) < window_size:
                 st.warning("⚠️ At least 30 rows are required.")
             else:
-                original_dates = list(df['Date'].values)
-                original_close = list(df['Close'].values)
+                # Select features and target
+                features = ['Close', 'Strike Price', 'Volume', 'Open Price', 'High Price', 'Low Price']
+                df = df[features].dropna()  # Drop rows with missing values
+                df['Date'] = pd.to_datetime(df['Date'])
+                
+                # Use the last 30 days data for training
+                X = df[features].iloc[-window_size:].values
+                y = df['Close'].iloc[-window_size:].values
 
-                X = np.arange(window_size).reshape(-1, 1)
-                y = np.array(original_close[-window_size:])
                 predicted_dates = []
                 predicted_values = []
-
                 last_known_date = df['Date'].iloc[-1]
 
                 for i in range(6):
                     model = LinearRegression()
                     model.fit(X, y)
-                    next_value = model.predict([[window_size]])[0]
+                    next_value = model.predict([X[-1]])[0]  # Predict the next value based on last window data
 
                     predicted_values.append(next_value)
                     last_known_date += pd.Timedelta(days=1)
                     predicted_dates.append(last_known_date)
 
-                    # Update input window
-                    y = np.append(y[1:], next_value)
+                    # Update window for the next prediction
+                    X = np.roll(X, shift=-1, axis=0)
+                    X[-1] = np.append(X[-1][1:], next_value)
 
                 # Display predictions
                 pred_df = pd.DataFrame({
@@ -61,7 +66,7 @@ if uploaded_file:
 
                 # Plot
                 fig, ax = plt.subplots(figsize=(12, 6))
-                ax.plot(original_dates[-window_size:], original_close[-window_size:], label="Actual", marker='o')
+                ax.plot(df['Date'].iloc[-window_size:], df['Close'].iloc[-window_size:], label="Actual", marker='o')
                 ax.plot(predicted_dates, predicted_values, label="Predicted", marker='o', color='red')
                 ax.set_title("NIFTY 50 - Actual vs Next 6 Day Prediction")
                 ax.set_xlabel("Date")
